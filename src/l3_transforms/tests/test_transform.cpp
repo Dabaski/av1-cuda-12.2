@@ -150,6 +150,100 @@ TEST_CASE("fwdTxfm2d4x4 adst golden full block") {
     CHECK(ok);
 }
 
+TEST_CASE("gpu fwd txfm 2d dct matches host bit-exactly") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const std::int16_t in[16] = {9, 2, 3, 1, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 9, 1};
+    std::int32_t ref[16] = {0};
+    transforms::fwdTxfm2d4x4(in, ref, 4, transforms::TxType::DCT_DCT);
+
+    const std::string ptx = *gpurt::compileToPtx(transforms::fwdTxfmCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "fwd_txfm_2d_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dIn(sizeof(in));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dIn.uploadFrom(in, sizeof(in));
+
+    int strideArg = 4;
+    int typeArg = 0;
+    gpurt::DeviceBuffer dStride(sizeof(strideArg));
+    gpurt::DeviceBuffer dType(sizeof(typeArg));
+    dStride.uploadFrom(&strideArg, sizeof(strideArg));
+    dType.uploadFrom(&typeArg, sizeof(typeArg));
+
+    CUdeviceptr pIn = dIn.get();
+    CUdeviceptr pStride = dStride.get();
+    CUdeviceptr pType = dType.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pIn, &pStride, &pType, &pOut};
+    k.launch(1, 1, 4, 1, args);
+
+    std::int32_t got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu fwd txfm 2d adst matches host bit-exactly") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const std::int16_t in[16] = {9, 2, 3, 1, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 9, 1};
+    std::int32_t ref[16] = {0};
+    transforms::fwdTxfm2d4x4(in, ref, 4, transforms::TxType::ADST_ADST);
+
+    const std::string ptx = *gpurt::compileToPtx(transforms::fwdTxfmCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "fwd_txfm_2d_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dIn(sizeof(in));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dIn.uploadFrom(in, sizeof(in));
+
+    int strideArg = 4;
+    int typeArg = 1;
+    gpurt::DeviceBuffer dStride(sizeof(strideArg));
+    gpurt::DeviceBuffer dType(sizeof(typeArg));
+    dStride.uploadFrom(&strideArg, sizeof(strideArg));
+    dType.uploadFrom(&typeArg, sizeof(typeArg));
+
+    CUdeviceptr pIn = dIn.get();
+    CUdeviceptr pStride = dStride.get();
+    CUdeviceptr pType = dType.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pIn, &pStride, &pType, &pOut};
+    k.launch(1, 1, 4, 1, args);
+
+    std::int32_t got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
 TEST_CASE("forward 4x4 dct of a constant block is all dc") {
     const float in[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
     float out[16] = {0};

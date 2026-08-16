@@ -149,6 +149,114 @@ void fwdTxfm2d4x4(const std::int16_t* input, std::int32_t* output, std::uint32_t
     }
 }
 
+std::string fwdTxfmCuSource() {
+    return R"CUDA(
+__constant__ int kCospi[64] = {
+    8192, 8190, 8182, 8170, 8153, 8130, 8103, 8071, 8035, 7993, 7946, 7895, 7839, 7779, 7713, 7643,
+    7568, 7489, 7405, 7317, 7225, 7128, 7027, 6921, 6811, 6698, 6580, 6458, 6333, 6203, 6070, 5933,
+    5793, 5649, 5501, 5351, 5197, 5040, 4880, 4717, 4551, 4383, 4212, 4038, 3862, 3683, 3503, 3320,
+    3135, 2948, 2760, 2570, 2378, 2185, 1990, 1795, 1598, 1401, 1202, 1003, 803,  603,  402,  201,
+};
+
+__constant__ int k_Sinpi[5] = {0, 2642, 4964, 6689, 7606};
+
+__device__ int d_half_btf(int w0, int in0, int w1, int in1, int bit) {
+    long long result = (long long)(w0 * in0) + (long long)(w1 * in1);
+    long long mid = result + (1LL << (bit - 1));
+    return (int)(mid >> bit);
+}
+
+__device__ int d_round_shift(long long value, int bit) {
+    return (int)((value + (1LL << (bit - 1))) >> bit);
+}
+
+__device__ void d_fdct4(const int* input, int* output) {
+    const int bit = 13;
+    int bf[4];
+    int step[4];
+    bf[0] = input[0] + input[3];
+    bf[1] = input[1] + input[2];
+    bf[2] = -input[2] + input[1];
+    bf[3] = -input[3] + input[0];
+    step[0] = d_half_btf(kCospi[32], bf[0], kCospi[32], bf[1], bit);
+    step[1] = d_half_btf(-kCospi[32], bf[1], kCospi[32], bf[0], bit);
+    step[2] = d_half_btf(kCospi[48], bf[2], kCospi[16], bf[3], bit);
+    step[3] = d_half_btf(kCospi[48], bf[3], -kCospi[16], bf[2], bit);
+    output[0] = step[0];
+    output[1] = step[2];
+    output[2] = step[1];
+    output[3] = step[3];
+}
+
+__device__ void d_fadst4(const int* input, int* output) {
+    const int bit = 13;
+    int x0 = input[0];
+    int x1 = input[1];
+    int x2 = input[2];
+    int x3 = input[3];
+    if (!(x0 | x1 | x2 | x3)) {
+        output[0] = output[1] = output[2] = output[3] = 0;
+        return;
+    }
+    int s0 = k_Sinpi[1] * x0;
+    int s1 = k_Sinpi[4] * x0;
+    int s2 = k_Sinpi[2] * x1;
+    int s3 = k_Sinpi[1] * x1;
+    int s4 = k_Sinpi[3] * x2;
+    int s5 = k_Sinpi[4] * x3;
+    int s6 = k_Sinpi[2] * x3;
+    int s7 = x0 + x1;
+    s7 = s7 - x3;
+    int y0 = s0 + s2;
+    int y1 = k_Sinpi[3] * s7;
+    int y2 = s1 - s3;
+    int y3 = s4;
+    y0 = y0 + s5;
+    y2 = y2 + s6;
+    s0 = y0 + y3;
+    s1 = y1;
+    s2 = y2 - y3;
+    s3 = y2 - y0;
+    s3 = s3 + y3;
+    output[0] = d_round_shift(s0, bit);
+    output[1] = d_round_shift(s1, bit);
+    output[2] = d_round_shift(s2, bit);
+    output[3] = d_round_shift(s3, bit);
+}
+
+extern "C" __global__ void fwd_txfm_2d_4x4(const short* input, const int* stride, const int* txType,
+                                           int* output) {
+    __shared__ int sbuf[16];
+    const int t = threadIdx.x;
+    int tmp[4];
+    int o[4];
+    for (int r = 0; r < 4; ++r) {
+        tmp[r] = input[r * (*stride) + t] * 4;
+    }
+    if (*txType == 0) {
+        d_fdct4(tmp, o);
+    } else {
+        d_fadst4(tmp, o);
+    }
+    for (int r = 0; r < 4; ++r) {
+        sbuf[r * 4 + t] = o[r];
+    }
+    __syncthreads();
+    for (int c = 0; c < 4; ++c) {
+        tmp[c] = sbuf[t * 4 + c];
+    }
+    if (*txType == 0) {
+        d_fdct4(tmp, o);
+    } else {
+        d_fadst4(tmp, o);
+    }
+    for (int c = 0; c < 4; ++c) {
+        output[t * 4 + c] = o[c];
+    }
+}
+)CUDA";
+}
+
 constexpr int kN = 4;
 
 namespace {
@@ -252,3 +360,4 @@ void dct2Forward4x4(const float in[16], float out[16]) {
 }
 
 }  // namespace transforms
+
