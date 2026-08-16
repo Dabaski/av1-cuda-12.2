@@ -39,6 +39,79 @@ std::int32_t roundShift(std::int64_t value, int bit) {
     return static_cast<std::int32_t>((value + (1LL << (bit - 1))) >> bit);
 }
 
+// svt_av1_fdct4_new (transforms.c), cos_bit = 13
+void fdct4(const std::int32_t input[4], std::int32_t output[4]) {
+    const int8_t cosBit = 13;
+    std::int32_t bf0[4];
+    std::int32_t bf1[4];
+    std::int32_t step[4];
+
+    bf1[0] = input[0] + input[3];
+    bf1[1] = input[1] + input[2];
+    bf1[2] = -input[2] + input[1];
+    bf1[3] = -input[3] + input[0];
+
+    for (int i = 0; i < 4; ++i) {
+        bf0[i] = bf1[i];
+    }
+    step[0] = halfBtf(kCospi13[32], bf0[0], kCospi13[32], bf0[1], cosBit);
+    step[1] = halfBtf(-kCospi13[32], bf0[1], kCospi13[32], bf0[0], cosBit);
+    step[2] = halfBtf(kCospi13[48], bf0[2], kCospi13[16], bf0[3], cosBit);
+    step[3] = halfBtf(kCospi13[48], bf0[3], -kCospi13[16], bf0[2], cosBit);
+
+    output[0] = step[0];
+    output[1] = step[2];
+    output[2] = step[1];
+    output[3] = step[3];
+}
+
+// svt_av1_fadst4_new (transforms.c), cos_bit = 13 (incl. all-zero early-out)
+void fadst4(const std::int32_t input[4], std::int32_t output[4]) {
+    const int bit   = 13;
+    const std::int32_t x0 = input[0];
+    const std::int32_t x1 = input[1];
+    const std::int32_t x2 = input[2];
+    const std::int32_t x3 = input[3];
+
+    if (!(x0 | x1 | x2 | x3)) {
+        output[0] = output[1] = output[2] = output[3] = 0;
+        return;
+    }
+
+    std::int32_t s0, s1, s2, s3, s4, s5, s6, s7;
+
+    s0 = kSinpi13[1] * x0;
+    s1 = kSinpi13[4] * x0;
+    s2 = kSinpi13[2] * x1;
+    s3 = kSinpi13[1] * x1;
+    s4 = kSinpi13[3] * x2;
+    s5 = kSinpi13[4] * x3;
+    s6 = kSinpi13[2] * x3;
+    s7 = x0 + x1;
+
+    s7 = s7 - x3;
+
+    std::int32_t y0 = s0 + s2;
+    std::int32_t y1 = kSinpi13[3] * s7;
+    std::int32_t y2 = s1 - s3;
+    std::int32_t y3 = s4;
+
+    y0 = y0 + s5;
+    y2 = y2 + s6;
+
+    s0 = y0 + y3;
+    s1 = y1;
+    s2 = y2 - y3;
+    s3 = y2 - y0;
+
+    s3 = s3 + y3;
+
+    output[0] = roundShift(s0, bit);
+    output[1] = roundShift(s1, bit);
+    output[2] = roundShift(s2, bit);
+    output[3] = roundShift(s3, bit);
+}
+
 constexpr int kN = 4;
 
 namespace {
