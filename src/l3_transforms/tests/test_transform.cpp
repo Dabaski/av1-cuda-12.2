@@ -3,6 +3,34 @@
 #include <gpurt.h>
 #include <transform.h>
 
+TEST_CASE("cospi cos_bit=13 index 16 is 7568") {
+    // golden: svt_aom_eb_av1_cospi_arr_data[13 - 10][16]
+    CHECK(transforms::cospi13(16) == 7568);
+}
+
+TEST_CASE("cospi cos_bit=13 index 32 is 5793") {
+    // golden: svt_aom_eb_av1_cospi_arr_data[13 - 10][32]
+    CHECK(transforms::cospi13(32) == 5793);
+}
+
+TEST_CASE("cospi cos_bit=13 index 48 is 3135") {
+    // golden: svt_aom_eb_av1_cospi_arr_data[13 - 10][48]
+    CHECK(transforms::cospi13(48) == 3135);
+}
+
+TEST_CASE("sinpi cos_bit=13 index 4 is 7606") {
+    // golden: svt_aom_eb_av1_sinpi_arr_data[13 - 10][4]
+    CHECK(transforms::sinpi13(4) == 7606);
+}
+
+TEST_CASE("half_btf rounds 5793*8+5793*8 at bit 13 to 11") {
+    CHECK(transforms::halfBtf(5793, 8, 5793, 8, 13) == 11);
+}
+
+TEST_CASE("round_shift rounds 96784 by 13 bits to 12") {
+    CHECK(transforms::roundShift(96784, 13) == 12);
+}
+
 TEST_CASE("forward 4x4 dct of a constant block is all dc") {
     const float in[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
     float out[16] = {0};

@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang='en' class='h-100' data-color-scheme='light'>
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="csrf-param" content="authenticity_token" />
+<meta name="csrf-token" content="_ntbWEUosBM596i-3KQGXd9P7Jx5MYTyAeNy-0XKlBLApBlDMTh-aakblRbIhSphA3u8LDHTaqMoCJ36y4jFNg" />
+    <meta name="csp-nonce" />
+    <title>Legacy CUDA GPU Compute Capability | NVIDIA Developer</title>
+<meta name="description" content="Learn more about the hardware features and supported instructions for each legacy NVIDIA GPU architecture.">
+<meta name="keywords" content="cuda, legacy gpu, gpu support, compute capability, nvidia">
+<link rel="canonical" href="https://developer.nvidia.com/cuda/gpus/legacy">
+<link rel="alternate" href="https://developer.nvidia.com/cuda/gpus/legacy" hreflang="x-default">
+<link rel="alternate" href="https://developer.nvidia.com/cuda/gpus/legacy" hreflang="en-us">
+<link rel="alternate" href="https://developer.nvidia.cn/cuda/gpus/legacy" hreflang="zh-cn">
+<meta property="og:site_name" content="NVIDIA Developer">
+<meta property="og:title" content="NVIDIA Legacy CUDA GPU Compute Capability">
+<meta property="og:description" content="Find the compute capability for legacy GPUs.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://d29g4g2dyqv443.cloudfront.net/sites/default/files/styles/610x345/public/externals/94007d76757e49366fe7e91734537dbb.jpg">
+<meta property="og:url" content="https://developer.nvidia.com/cuda/gpus/legacy">
+<meta name="twitter:title" content="NVIDIA Legacy CUDA GPU Compute Capability">
+<meta name="twitter:description" content="Explore the hardware features and supported instructions for legacy NVIDIA GPU architecture.">
+<meta name="twitter:image" content="https://d29g4g2dyqv443.cloudfront.net/sites/default/files/styles/610x345/public/externals/94007d76757e49366fe7e91734537dbb.jpg">
+<meta name="twitter:site" content="@NVIDIA">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:creator" content="@NVIDIADeveloper">
+      <link rel="alternate" type="text/markdown" title="Page Markdown" href="https://developer.nvidia.com/cuda/gpus/legacy.md">
+
+    <link rel="stylesheet" href="https://developer.nvidia.com/assets/application-a33c9d5545dd28001cbcd77c4ea1f68cda0ad4efe5a345b1cc129c8c992b0c05.css" media="all" />
+
+    <script>
+  const NvAssets = {
+    CSS: {
+      highlightJs: "https://developer.nvidia.com/assets/highlight-7c6157fe69da4cc401cddeb387737d6991b2012dc14e90f3d52764a3a58fd3da.css",
+    }
+  }
+</script>
+
+
+    
+  <link rel="stylesheet" href="https://developer.nvidia.com/assets/one-trust-bea625cf16a072ce5fdb0707a19f2645daf63c05eb1a016db72773eba008fc07.css" />
+  <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js" charset="UTF-8" data-document-language="true" data-domain-script="3e2b62ff-7ae7-4ac5-87c8-d5949ecafff5"></script>
+
+<script src="https://images.nvidia.com/aem-dam/Solutions/ot-js/ot-custom.js"></script>
+
+<script>
+  function OptanonWrapper() {
+    let event = new Event('bannerLoaded');
+    window.dispatchEvent(event);
+
+      if (window.OnetrustActiveGroups && window.OnetrustActiveGroups.includes("C0002")) {
+        window.DD_RUM && window.DD_RUM.init({
+          clientToken: 'pub0430c74fae5d2b467bcb8d48b13e5b32',
+          applicationId: '9fc963c7-14e6-403d-bdec-ee671550bb7f',
+          site: 'datadoghq.com',
+          service: 'devzone',
+          env: 'prod',
+          version: 'v2.60.0',
+          sessionSampleRate: 10,
+          sessionReplaySampleRate: 5,
+          trackUserInteractions: true,
+          trackResources: true,
+          trackLongTasks: true,
+          defaultPrivacyLevel: 'mask-user-input',
+        });
+      }
+  }
+</script>
+
+
+    <script>
+  (function() {
+    var didInit = false;
+    function initMunchkin() {
+      if(didInit === false) {
+        didInit = true;
+        Munchkin.init('156-OFN-742');
+      }
+    }
+    function loadMunchkin() {
+      // Munchkin falls under the OneTrust "Advertising" category (C0004); only
+      // load it once the user has consented to that category.
+      if (!window.OnetrustActiveGroups || !window.OnetrustActiveGroups.includes("C0004")) {
+        return;
+      }
+      // bannerLoaded re-fires on every consent change; once we have consent we
+      // only need to inject the script tag once.
+      window.removeEventListener('bannerLoaded', loadMunchkin);
+      var s = document.createElement('script');
+      s.type = 'text/javascript';
+      s.async = true;
+      s.src = '//munchkin.marketo.net/munchkin.js';
+      s.onreadystatechange = function() {
+        if (this.readyState == 'complete' || this.readyState == 'loaded') {
+          initMunchkin();
+        }
+      };
+      s.onload = initMunchkin;
+      document.getElementsByTagName('head')[0].appendChild(s);
+    }
+    // OnetrustActiveGroups is populated asynchronously after the OneTrust SDK
+    // loads, which dispatches "bannerLoaded" (see layouts/_one_trust). Wait for
+    // that signal so consenting users still get Munchkin, then re-check on each
+    // consent change (the didInit guard keeps init idempotent).
+    window.addEventListener('bannerLoaded', loadMunchkin);
+})();
+</script>
+
+    <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "NVIDIA Developer",
+    "url": "https://developer.nvidia.com",
+    "logo": "https://www.nvidia.com/en-us/about-nvidia/legal-info/logo-brand-usage/_jcr_content/root/responsivegrid/nv_container_392921705/nv_container_412055486/nv_image.coreimg.100.630.png/1703060329095/nvidia-logo-horz.png",
+    "sameAs": [
+      "https://github.com/nvidia",
+      "https://www.linkedin.com/company/nvidia/",
+      "https://x.com/nvidiadeveloper"
+    ]
+  }
+</script>
+
+    
+    <meta name='typesense-host' content='typesense.svc.nvidia.com'>
+<meta name='typesense-key' content='uFs9XGl9BWS7af7eAIbKNQ49sJnjEfQk'>
+<script src="https://developer.download.nvidia.com/scripts/typesense.js"></script>
+
+
+    <script src="https://assets.adobedtm.com/5d4962a43b79/c1061d2c5e7b/launch-191c2462b890.min.js" data-ot-ignore="true"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.3/jquery.min.js" integrity="sha512-STof4xm1wgkfm7heWqFJVn58Hm3EtS31XFaagaa8VMReCXAkQnJZ+jEy8PCC/iT18dFy95WcExNHFTqLyp72eQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <script src="https://developer.nvidia.com/assets/bootstrap/5.1.3/bootstrap.bundle.min-51ad1d8cab4ebd9873a0429f5e67ca717a71fd96daf8025bc04a88848e5b375c.js"></script>
+
+
+    <link rel="icon" type="image/x-icon" href="https://developer.nvidia.com/assets/favicon-81bff16cada05fcff11e5711f7e6212bdc2e0a32ee57cd640a8cf66c87a6cbe6.ico" />
+  </head>
+
+  <body class='d-flex flex-column h-100'>
+    
+    
+
+      <div id='header'></div>
+
+
+
+
+    
+
+
+
+
+
+
+
+    <div id='page-mobile-nav-container'></div>
+    <div class='page'>
+      <div class="getting-started-page">
+<div class="container page"><div class="row">
+<div class="col-md-12 col-sm-12 col-main-content col-lg-1 col-xl-1"></div>
+<div class="col-md-12 col-sm-12 col-main-content col-lg-10 col-xl-10"><main class="page__content"><section class="page__section page__first-section"><div class="separator separator--60"></div>
+<h1 class="h--large section__heading">Legacy CUDA GPU Compute Capability</h1></section><p class="p--large text-color-gray mb-0"><a id="ixd5pb" href="https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/compute-capabilities.html" class="nv-link">Compute capability</a> (CC) defines the hardware features and supported instructions for each NVIDIA GPU architecture. Find the compute capability for legacy GPUs in the table below. <br>To find the compute capability of the latest CUDA-capable NVIDIA GPUs, <a id="ivhv74" href="https://developer.nvidia.com/cuda/gpus" class="nv-link">go here</a>.</p>
+<div class="separator separator--45"></div>
+<section class="page__section page__second-section"><div id="i29cq" class="nv-table nv-table-alt-row-1 nv-table--p-1"><table id="isy0j">
+<thead class="table-head"><tr id="i5mjkv">
+<th id="idfie"><h3 id="iyc3ez" class="h--smallest mb-0">Compute Capability</h3></th>
+<th id="i892x"><h3 id="iyc3ez-2" class="h--smallest mb-0">Data Center</h3></th>
+<th id="ihw4l"><h3 id="iyc3ez-3" class="h--smallest mb-0">Workstation/Consumer</h3></th>
+<th id="ip886q"><h3 id="iyc3ez-4" class="h--smallest mb-0">Jetson</h3></th>
+</tr></thead>
+<tbody class="table-body">
+<tr>
+<td><div id="ihv88g">7.2</div></td>
+<td data-col="Data Center"></td>
+<td data-col="GeForce/RTX" id="i7pg46"></td>
+<td data-col="Text" id="iq8g0h"><div id="ib6c4j">Jetson AGX Xavier<br>Jetson Xavier NX<br>
+</div></td>
+</tr>
+<tr>
+<td id="igd345"><div id="iu4duk">7.0</div></td>
+<td data-col="Data Center" id="ipm3ir"><div id="iq6hmm">NVIDIA V100</div></td>
+<td data-col="GeForce/RTX" id="idnta1"><div id="ixli2b">Quadro GV100<br>NVIDIA TITAN V<br>
+</div></td>
+<td data-col="Text"></td>
+</tr>
+<tr>
+<td id="imnwq8"><div id="idl53q">6.2</div></td>
+<td data-col="Data Center" id="i3hp95"></td>
+<td data-col="GeForce/RTX" id="ificwf"></td>
+<td data-col="Text" id="if224h"><div id="iqlv5t">Jetson TX2<br>
+</div></td>
+</tr>
+<tr>
+<td id="iunnc6"><div id="iqi69d">6.1</div></td>
+<td data-col="Data Center" id="irdg32"><div id="irpgxj">Tesla P40<br>Tesla P4<br>
+</div></td>
+<td data-col="GeForce/RTX" id="i2nvdt"><div id="im6l4b">Quadro P6000<br>Quadro P5200<br>Quadro P5000<br>Quadro P4200<br>Quadro P4000<br>Quadro P3200<br>Quadro P3000<br>Quadro P2200<br>Quadro P2000<br>Quadro P1000<br>Quadro P620<br>Quadro P600<br>Quadro P500<br>Quadro P400<br>P620<br>P520<br>NVIDIA TITAN Xp<br>NVIDIA TITAN X<br>GeForce GTX 1080 Ti<br>GeForce GTX 1080<br>GeForce GTX 1070 Ti<br>GeForce GTX 1070<br>GeForce GTX 1060<br>GeForce GTX 1050<br>
+</div></td>
+<td data-col="Text" id="ism1bq"></td>
+</tr>
+<tr>
+<td><div id="ila51k">6.0</div></td>
+<td id="iaq81q"><div id="imiqne">Tesla P100</div></td>
+<td id="i0uz09"><div id="i8vlrr">Quadro GP100</div></td>
+<td id="iz6dwx"></td>
+</tr>
+<tr>
+<td><div id="i9vnis">5.3</div></td>
+<td id="ifz8k9"></td>
+<td id="iclcin"></td>
+<td id="iak6ti"><div id="ii4x9j">Jetson Nano</div></td>
+</tr>
+<tr>
+<td><div id="i5ube2">5.2</div></td>
+<td id="i5fhvy"><div id="iaajgc">Tesla M60<br>Tesla M40<br>
+</div></td>
+<td id="iyker4"><div id="ixdvcn">Quadro M6000 24GB<br>Quadro M6000<br>Quadro M5000<br>Quadro M4000<br>Quadro M2000<br>Quadro M5500M<br>Quadro M2200<br>Quadro M620<br>GeForce GTX TITAN X<br>GeForce GTX 980 Ti<br>GeForce GTX 980<br>GeForce GTX 970<br>GeForce GTX 960<br>GeForce GTX 950<br>GeForce GTX 980M<br>GeForce GTX 970M<br>GeForce GTX 965M<br>GeForce 910M<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="i21s32">5.0</div></td>
+<td id="i69dpj"></td>
+<td id="ilj5el"><div id="i0hoti">Quadro K2200<br>Quadro K1200<br>Quadro K620<br>Quadro M1200<br>Quadro M520<br>Quadro M5000M<br>Quadro M4000M<br>Quadro M3000M<br>Quadro M2000M<br>Quadro M1000M<br>Quadro K620M<br>Quadro M600M<br>Quadro M500M<br>NVIDIA NVS 810<br>GeForce GTX 750 Ti<br>GeForce GTX 750<br>GeForce GTX 960M<br>GeForce GTX 950M<br>GeForce 940M<br>GeForce 930M<br>GeForce GTX 850M<br>GeForce 840M<br>GeForce 830M<br>
+</div></td>
+<td id="iqrjuh"></td>
+</tr>
+<tr>
+<td><div id="ij8iyd">3.7</div></td>
+<td id="i05uji"><div id="iobz8q">Tesla K80</div></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="i8ft82">3.5</div></td>
+<td id="ikcoqu"><div id="issc6v">Tesla K40<br>Tesla K20<br>
+</div></td>
+<td id="i0403l"><div id="iu6bqy">Quadro K6000<br>Quadro K5200<br>Quadro K610M<br>Quadro K510M<br>GeForce GTX TITAN Z<br>GeForce GTX TITAN Black<br>GeForce GTX TITAN<br>GeForce GTX 780 Ti<br>GeForce GTX 780<br>GeForce GT 730<br>GeForce GT 720<br>GeForce GT 705*<br>GeForce GT 640 (GDDR5)<br>GeForce 920M<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="irbr5g">3.2</div></td>
+<td></td>
+<td></td>
+<td id="i4aktb"><div id="iiwbli">Tegra K1<br>Jetson TK1<br>
+</div></td>
+</tr>
+<tr>
+<td><div id="ian2gj">3.0</div></td>
+<td id="insk8h"><div id="itsvw2">Tesla K10</div></td>
+<td id="ih2gok"><div id="ipx9le">Quadro K5000<br>Quadro K4200<br>Quadro K4000<br>Quadro K2000<br>Quadro K2000D<br>Quadro K600<br>Quadro K420<br>Quadro 410<br>Quadro K6000M<br>Quadro K5200M<br>Quadro K5100M<br>Quadro K500M<br>Quadro K4200M<br>Quadro K4100M<br>Quadro K3100M<br>Quadro K2200M<br>Quadro K2100M<br>Quadro K1100M<br>NVIDIA NVS 510<br>GeForce GTX 770<br>GeForce GTX 760<br>GeForce GTX 690<br>GeForce GTX 680<br>GeForce GTX 670<br>GeForce GTX 660 Ti<br>GeForce GTX 660<br>GeForce GTX 650 Ti BOOST<br>GeForce GTX 650 Ti<br>GeForce GTX 650<br>GeForce GT 740<br>GeForce GTX 880M<br>GeForce GTX 870M<br>GeForce GTX 780M<br>GeForce GTX 770M<br>GeForce GTX 765M<br>GeForce GTX 760M<br>GeForce GTX 680MX<br>GeForce GTX 680M<br>GeForce GTX 675MX<br>GeForce GTX 670MX<br>GeForce GTX 660M<br>GeForce GT 755M<br>GeForce GT 750M<br>GeForce GT 650M<br>GeForce GT 745M<br>GeForce GT 645M<br>GeForce GT 740M<br>GeForce GT 730M<br>GeForce GT 640M<br>GeForce GT 640M LE<br>GeForce GT 735M<br>GeForce GT 730M<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="ideghf">2.1</div></td>
+<td id="ia51bf"></td>
+<td id="ifzypl"><div id="ilht8c">NVIDIA NVS 315<br>NVIDIA NVS 310<br>NVS 5400M<br>NVS 5200M<br>NVS 4200M<br>Quadro 2000<br>Quadro 2000D<br>Quadro 600<br>Quadro 4000M<br>Quadro 3000M<br>Quadro 2000M<br>Quadro 1000M<br>GeForce GTX 560 Ti<br>GeForce GTX 550 Ti<br>GeForce GTX 460<br>GeForce GTS 450<br>GeForce GTS 450*<br>GeForce GT 730 DDR3,128bit<br>GeForce GT 640 (GDDR3)<br>GeForce GT 630<br>GeForce GT 620<br>GeForce GT 610<br>GeForce GT 520<br>GeForce GT 440<br>GeForce GT 440*<br>GeForce GT 430<br>GeForce GT 430*<br>GeForce 820M<br>GeForce 800M<br>GeForce GTX 675M<br>GeForce GTX 670M<br>GeForce GT 635M<br>GeForce GT 630M<br>GeForce GT 625M<br>GeForce GT 720M<br>GeForce GT 620M<br>GeForce 710M<br>GeForce 705M<br>GeForce 610M<br>GeForce GTX 580M<br>GeForce GTX 570M<br>GeForce GTX 560M<br>GeForce GT 555M<br>GeForce GT 550M<br>GeForce GT 540M<br>GeForce GT 525M<br>GeForce GT 520MX<br>GeForce GT 520M<br>GeForce GTX 485M<br>GeForce GTX 470M<br>GeForce GTX 460M<br>GeForce GT 445M<br>GeForce GT 435M<br>GeForce GT 420M<br>GeForce GT 415M<br>GeForce 710M<br>GeForce 410M<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="izcjr3">2.0</div></td>
+<td id="ii0hke"><div id="ilxtkp">Tesla C2075<br>Tesla C2050<br>Tesla C2070<br>Tesla M2050<br>Tesla M2070<br>Tesla M2075<br>Tesla M2090<br>
+</div></td>
+<td id="imrj9k"><div id="iio5vv">Quadro Plex 7000<br>Quadro 6000<br>Quadro 5000<br>Quadro 4000<br>Quadro 4000 for Mac<br>Quadro 5010M<br>Quadro 5000M<br>GeForce GTX 590<br>GeForce GTX 580<br>GeForce GTX 570<br>GeForce GTX 480<br>GeForce GTX 470<br>GeForce GTX 465<br>GeForce GTX 480M<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="i6oy7m">1.3</div></td>
+<td id="i6jgi7"><div id="id6szy">Tesla C1060<br>Tesla S1070<br>Tesla M1060<br>
+</div></td>
+<td id="ilusx9"><div id="i9cbzp">Quadro FX 5800<br>Quadro FX 4800<br>Quadro FX 4800 for Mac<br>Quadro FX 3800<br>Quadro CX<br>Quadro Plex 2200 D2<br>GeForce GTX 295<br>GeForce GTX 285<br>GeForce GTX 285 for Mac<br>GeForce GTX 280<br>GeForce GTX 275<br>GeForce GTX 260<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="ixh78g">1.2</div></td>
+<td></td>
+<td id="i0tme7"><div id="i6qq4k">Quadro 400<br>Quadro FX 380 Low Profile<br>NVIDIA NVS 300<br>Quadro FX 1800M<br>Quadro FX 880M<br>Quadro FX 380M<br>NVIDIA NVS 300<br>NVS 5100M<br>NVS 3100M<br>NVS 2100M<br>GeForce GT 240<br>GeForce GT 220*<br>GeForce 210*<br>GeForce GTS 360M<br>GeForce GTS 350M<br>GeForce GT 335M<br>GeForce GT 330M<br>GeForce GT 325M<br>GeForce GT 240M<br>GeForce G210M<br>GeForce 310M<br>GeForce 305M<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="i3h7y9">1.1</div></td>
+<td></td>
+<td id="idju95"><div id="i5hmgq">Quadro FX 4700 X2<br>Quadro FX 3700<br>Quadro FX 1800<br>Quadro FX 1700<br>Quadro FX 580<br>Quadro FX 570<br>Quadro FX 470<br>Quadro FX 380<br>Quadro FX 370<br>Quadro FX 370 Low Profile<br>Quadro NVS 450<br>Quadro NVS 420<br>Quadro NVS 295<br>Quadro Plex 2100 D4<br>Quadro FX 3800M<br>Quadro FX 3700M<br>Quadro FX 3600M<br>Quadro FX 2800M<br>Quadro FX 2700M<br>Quadro FX 1700M<br>Quadro FX 1600M<br>Quadro FX 770M<br>Quadro FX 570M<br>Quadro FX 370M<br>Quadro FX 360M<br>Quadro NVS 320M<br>Quadro NVS 160M<br>Quadro NVS 150M<br>Quadro NVS 140M<br>Quadro NVS 135M<br>Quadro NVS 130M<br>Quadro NVS 450<br>Quadro NVS 420<br>Quadro NVS 295<br>GeForce GTS 250<br>GeForce GTS 150<br>GeForce GT 130*<br>GeForce GT 120*<br>GeForce G100*<br>GeForce 9800 GX2<br>GeForce 9800 GTX+<br>GeForce 9800 GTX<br>GeForce 9600 GSO<br>GeForce 9500 GT<br>GeForce 8800 GTS<br>GeForce 8800 GT<br>GeForce 8800 GS<br>GeForce 8600 GTS<br>GeForce 8600 GT<br>GeForce 8500 GT<br>GeForce 8400 GS<br>GeForce 9400 mGPU<br>GeForce 9300 mGPU<br>GeForce 8300 mGPU<br>GeForce 8200 mGPU<br>GeForce 8100 mGPU<br>GeForce GTX 285M<br>GeForce GTX 280M<br>GeForce GTX 260M<br>GeForce 9800M GTX<br>GeForce 8800M GTX<br>GeForce GTS 260M<br>GeForce GTS 250M<br>GeForce 9800M GT<br>GeForce 9600M GT<br>GeForce 8800M GTS<br>GeForce 9800M GTS<br>GeForce GT 230M<br>GeForce 9700M GT<br>GeForce 9650M GS<br>GeForce 9700M GT<br>GeForce 9650M GS<br>GeForce 9600M GT<br>GeForce 9600M GS<br>GeForce 9500M GS<br>GeForce 8700M GT<br>GeForce 8600M GT<br>GeForce 8600M GS<br>GeForce 9500M G<br>GeForce 9300M G<br>GeForce 8400M GS<br>GeForce G210M<br>GeForce G110M<br>GeForce 9300M GS<br>GeForce 9200M GS<br>GeForce 9100M G<br>GeForce 8400M GT<br>GeForce G105M<br>
+</div></td>
+<td></td>
+</tr>
+<tr>
+<td><div id="i5wspw">1.0</div></td>
+<td id="is7nt5"><div id="icyc7b">Tesla C870<br>Tesla D870<br>Tesla S870<br>
+</div></td>
+<td id="ir9sys"><div id="i29p4m">Quadro FX 5600<br>Quadro FX 4600<br>Quadro Plex 2100 S4<br>GeForce GT 420*<br>GeForce 8800 Ultra<br>GeForce 8800 GTX<br>GeForce GT 340*<br>GeForce GT 330*<br>GeForce GT 320*<br>GeForce 315*<br>GeForce 310*<br>GeForce 9800 GT<br>GeForce 9600 GT<br>GeForce 9400GT<br>
+</div></td>
+<td></td>
+</tr>
+</tbody>
+</table></div></section><section class="page__section page__lead-section page__last-section mt-0 page__section--light-gray"><div class="separator separator--45"></div>
+<p class="p--large lead text-center mb-0 px-2">Get started with CUDA today.<br></p>
+<div class="separator separator--30"></div>
+<p id="isgvi" class="text-center"><a href="https://developer.nvidia.com/cuda-downloads" target="" title="" class="btn btn-cta mt-2 me-4">Download CUDA Toolkit</a><a href="https://docs.nvidia.com/cuda/" target="" title="" class="btn btn-cta--light btn-cta me-2 mt-2">Documentation</a></p>
+<div class="separator separator--30"></div></section></main></div>
+</div></div>
+<div class="separator separator--60"></div>
+</div>
+    </div>
+
+
+
+
+
+
+          <script type="text/javascript">
+  (() => {
+    const handleQuotesBlock = (quotesBlock, idx) => {
+      const blockquotes = quotesBlock.querySelectorAll('blockquote');
+      if (blockquotes.length < 1) {
+        return;
+      }
+
+      const navContainer = document.createElement('ul');
+      navContainer.classList.add('quotes-list-navigation');
+      for (let i = 0; i < blockquotes.length; i++) {
+        let navItem = document.createElement('li');
+        let btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset['group'] = idx.toString();
+        btn.dataset['length'] = blockquotes.length.toString();
+        btn.value = i.toString();
+
+        btn.addEventListener('click', (e) => {
+          const group = e.target.dataset['group'];
+          const groupActiveButtons = document.querySelectorAll(`button[data-group="${group}"].active`);
+          groupActiveButtons.forEach((activeButton) => {
+            activeButton.classList.remove('active');
+          });
+          e.target.classList.add('active');
+          const viewPortWidth = quotesBlock.getBoundingClientRect().width;
+          const clickedSlide = parseInt(e.target.value);
+          quotesBlock.querySelector('.quotes-list').style.transform = `translate(-${viewPortWidth * clickedSlide}px)`;
+        });
+        navItem.appendChild(btn);
+        navContainer.appendChild(navItem);
+
+        if (i === 0) {
+          btn.click();
+        }
+      }
+      quotesBlock.appendChild(navContainer);
+    };
+
+    const refreshQuotesBlock = () => {
+      document.querySelectorAll('.quotes-list-navigation button.active').forEach((b) => {
+        const currentItem = parseInt(b.value);
+        const maxItem = parseInt(b.dataset['length']);
+        const group = parseInt(b.dataset['group']);
+        const next = currentItem + 1;
+        if (next < maxItem) {
+          document.querySelectorAll(`button[data-group="${group}"]`)[next].click();
+        } else {
+          document.querySelectorAll(`button[data-group="${group}"]`)[0].click();
+        }
+      });
+    };
+
+    const refreshInterval = 4000;
+    const quotesBlocks = document.querySelectorAll('.quotes-list-viewport');
+
+    if (quotesBlocks.length) {
+      quotesBlocks.forEach(handleQuotesBlock);
+      setInterval(refreshQuotesBlock, refreshInterval);
+    }
+  })();
+</script>
+
+      <script type="text/javascript" charset="utf-8">
+  (() => {
+    const doInit = (accordionRoot, idx) => {
+      const baseID = `page-accordion-${idx}`;
+      accordionRoot.id = baseID;
+      const headings = accordionRoot.querySelectorAll('.accordion-header');
+      if (!headings.length) {
+        return;
+      }
+
+      const collapseElements = accordionRoot.querySelectorAll('.accordion-collapse');
+
+      headings.forEach((headingElement, idx) => {
+        const headingID = `${baseID}-heading-${idx}`;
+        const targetID = `${baseID}-target-${idx}`;
+        headingElement.id = headingID;
+        const headingButton = headingElement.querySelector('.accordion-button');
+        if (!headingButton) {
+          return;
+        }
+        headingButton.type = 'button';
+        headingButton.dataset['bsToggle'] = 'collapse';
+        headingButton.dataset['bsTarget'] = `#${targetID}`;
+        headingButton.setAttribute('aria-expanded', true);
+        headingButton.setAttribute('aria-controls', targetID);
+        headingButton.setAttribute('role', 'button');
+
+        if (!collapseElements[idx].classList.contains('show')) {
+          headingButton.classList.add('collapsed');
+        }
+
+        collapseElements[idx].id = targetID;
+        collapseElements[idx].setAttribute('aria-labelledby', headingID);
+      });
+
+      new bootstrap.Collapse(accordionRoot);
+    };
+
+    const initAccordions = () => {
+      const accordions = document.querySelectorAll('section.page__section div.accordion');
+      if (!accordions.length) {
+        return;
+      }
+
+      let accordionIndex = 0;
+      accordions.forEach((accordion) => {
+        doInit(accordion, accordionIndex);
+        accordionIndex += 1;
+      });
+    };
+    
+    document.addEventListener('DOMContentLoaded', initAccordions)
+  })();
+</script>
+
+      <script src="https://developer.nvidia.com/assets/grapesjs-tabs-f0b094476ecf56695b765f533e437303138b1e0824d993c50ff672e16dcccd8f.js"></script>
+      <script src="https://developer.nvidia.com/assets/grapesjs-code-container-d9f9220defaa8a53ba3e8b7a6b1d155f6a1e5e5b37b9fa2282a7ace75bc60ae2.js"></script>
+      <script src="https://developer.nvidia.com/assets/legacy-chart/d3.v4.min-41cfecdf7c41476e805de7afacf4aacdd1a4be6947fbecf95217e947ebc2faf5.js"></script>
+      <script src="https://developer.nvidia.com/assets/legacy-chart/visualize-d-6a082dca95b2facd89f05ef138213cffea2419e9195042f6ceed4aa706943cb1.js"></script>
+      <script src="https://developer.nvidia.com/assets/momentjs/moment-b955adb4137f92dd932ff2c3179ce60cb5e1daed5fcc4423f95cf17df02b4d68.js"></script>
+      <script src="https://developer.nvidia.com/assets/momentjs/moment-timezone-with-data-10-year-range-dd05517070a46fa0052f9e706803d57a4fc38c1a223137ab480369e6308ba8d4.js"></script>
+      <script src="https://developer.nvidia.com/assets/calendar-256ba38a1da92b24c057388ff6623eddd4cf1498f51d1a389cc4dfac501ab87c.js"></script>
+      <script src="https://developer.nvidia.com/assets/hoverable-tooltip-06658c1c074450575999f586a2be4df71fb000fa8fbc3eec0955c1484012c593.js"></script>
+
+    <script src="https://developer.nvidia.com/assets/nv-developer-menu-c88ee4614adbf7a100e9a74ffafb4d2c78601cff8c61752d42de9d8ba1b5d769.js"></script>
+  <div id='footer' class='mt-auto'></div>
+  <script src="https://www.nvidia.com/content/dam/en-zz/Solutions/librarian/bundle-search-prod-pub-v3.1.js"></script>
+  <div id="librarian-overlay"></div>
+  <script defer>
+    setTimeout(() => {
+      LIBRARIAN.Home.mount({
+        elementId: 'librarian-overlay',
+        searchPage: false,
+        placeholder: '',
+        site: 'https://developer.nvidia.com',
+        retainFilters: true,
+        overlay: true,
+        pillsOpen: true,
+        suggestedSearchPills: []
+      })
+    }, 1000)
+  </script>
+<script>
+  let menuLocale = 'en';
+
+  if (menuLocale == 'en') {
+    menuLocale = 'en-US';
+  }
+
+  function mountHeader(data = false) {
+    const headerTarget = document.getElementById('header');
+    if (!headerTarget) {
+      return;
+    }
+    let options = {
+      baseURL: window.location.origin,
+      signedIn: false,
+      locale: menuLocale
+    };
+
+    if (data) {
+      options.secondaryMenu = data;
+    }
+
+
+    options.showMembershipCardLink = true;
+
+    new NVDeveloperHeader({
+      target: headerTarget,
+      props: options
+    });
+  }
+
+  function mountFooter(data = false) {
+    const footerTarget = document.getElementById('footer');
+    if (!footerTarget) {
+      return;
+    }
+    let options = {
+      menu: data,
+      locale: menuLocale
+    };
+
+    new NVDeveloperFooter({
+      target: document.getElementById('footer'),
+      props: options
+    });
+  }
+
+  let url = 'd29g4g2dyqv443.cloudfront.net';
+  let headerMenuURL = "https://d29g4g2dyqv443.cloudfront.net/menu/en-US/header-secondary.json";
+
+  if (headerMenuURL) {
+    fetch(headerMenuURL)
+      .then(response => response.json())
+      .then(data => {
+        mountHeader(data);
+      })
+      .catch((error) => {
+        mountHeader();
+        window.nv.tracing.addError('menu', error);
+      });
+  } else {
+    mountHeader();
+  }
+
+  fetch(`https://${url}/menu/${menuLocale}/footer.json`)
+    .then(response => response.json())
+    .then(data => {
+      mountFooter(data);
+    })
+    .catch((error) => {
+      mountFooter();
+      window.nv.tracing.addError('menu', error);
+    });
+</script>
+
+      <script src="https://www.datadoghq-browser-agent.com/us1/v5/datadog-rum.js"></script>
+
+    
+    
+      <script>
+  let silentAuthHost = 'www.nvidia.com';
+  let crossOriginPageUrl = `https://${silentAuthHost}/auth/hints/`;
+
+  function readHint() {
+    return new Promise((resolve) => {
+      const { origin: targetOrigin } = new URL(crossOriginPageUrl);
+
+      const iframe = document.createElement('iframe');
+      iframe.hidden = true;
+      iframe.src = crossOriginPageUrl;
+
+      function responseHandler(event) {
+        if (event.origin === targetOrigin) {
+          iframe.parentNode.removeChild(iframe);
+          return resolve(event.data);
+        }
+      }
+
+      window.addEventListener('message', responseHandler, { once: true });
+
+      iframe.onload = () => {
+        iframe.contentWindow.postMessage({ type: 'read' }, targetOrigin);
+      }
+
+      document.body.appendChild(iframe);
+    });
+  }
+
+  function writeHint(login_hint, idp_id, timestamp, sub) {
+    const { origin: targetOrigin } = new URL(crossOriginPageUrl);
+
+    const iframe = document.createElement('iframe');
+    iframe.hidden = true;
+    iframe.src = crossOriginPageUrl;
+
+    iframe.onload = () => {
+      const message = { type: 'write', login_hint, idp_id, timestamp, sub };
+      iframe.contentWindow.postMessage(message, targetOrigin);
+    }
+
+    document.body.appendChild(iframe);
+  }
+
+  function deleteHint() {
+    const { origin: targetOrigin } = new URL(crossOriginPageUrl);
+
+    const iframe = document.createElement('iframe');
+    iframe.hidden = true;
+    iframe.src = crossOriginPageUrl;
+
+    iframe.onload = () => {
+      iframe.contentWindow.postMessage({ type: 'delete' }, targetOrigin);
+    }
+
+    document.body.appendChild(iframe);
+  }
+
+
+</script>
+
+    <script>_satellite.pageBottom();</script>
+    <script src="https://api-prod.nvidia.com/search/nvidia-search-library.js"></script>
+
+    <script src="https://developer.nvidia.com/assets/nv-gallery-widget-d1571cad15d961fd3ba013f57119be04a2adf32aa31b16be44a0f10f4671c37b.js"></script>
+    <script src="https://developer.nvidia.com/packs/js/runtime-69f8104525d1541ca92d.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/4692-a478c93816dbe985b4fa.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/2681-d317b4e683473b6fe74d.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/2778-4e6b0ceb4dd3716c182c.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/9878-ace6038de3dd10e07189.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/8465-34d1ba762d9cdeef15fb.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/4622-0f5e83f2067789287ec7.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/3566-924c2986e780795b02f0.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/486-4ee95e78721864401fdd.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/8311-bc04e55c282e625862a2.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/1252-8ecaa37a655b20945baa.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/8823-1bca151f7e292c3ba6e8.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/2104-7b814c5d3850d4449567.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/6900-da14ff567994bcd33976.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/application-360b0b550ccf26e8a868.js" defer="defer"></script>
+<script src="https://developer.nvidia.com/packs/js/ls_track-2e73cf990bfafea2d9d1.js" defer="defer"></script>
+  </body>
+</html>

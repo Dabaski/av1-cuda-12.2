@@ -1,0 +1,111 @@
+NVIDIA Pascal-Generation Documentation Archive
+================================================
+Destination: C:\nvidia_docs\
+Downloaded: 2026-08-16
+Source: All files pulled directly from official NVIDIA / docs.nvidia.com URLs.
+         Every PDF was verified to have a valid %PDF magic header.
+
+SCOPE
+-----
+Everything directly Pascal-related (compute capability 6.x: GP100 sm_60,
+GP104/GP102 sm_61, GP106/107/108 sm_62), plus the CUDA programming docs
+that contain the official CUDA code examples and the PTX ISA covering
+the Pascal targets. Two parallel sets are included:
+  * "current" docs (latest CUDA, still accurately describe Pascal)
+  * "archive_cuda8" docs (CUDA 8.0 -- the toolkit Pascal launched with,
+    the most period-accurate reference for the generation)
+
+CONTENTS
+--------
+tuning_guides/
+  Pascal_Tuning_Guide.pdf
+    https://docs.nvidia.com/cuda/pdf/Pascal_Tuning_Guide.pdf
+
+compatibility/
+  Pascal_Compatibility_Guide.pdf
+    https://docs.nvidia.com/cuda/pdf/Pascal_Compatibility_Guide.pdf
+
+whitepapers/
+  GP100_Pascal_Whitepaper_v1.2.pdf
+    https://images.nvidia.com/content/pdf/tesla/whitepaper/pascal-architecture-whitepaper-v1.2.pdf
+  GP100_Pascal_Whitepaper_v1.1.pdf
+    https://images.nvidia.com/content/pdf/tesla/whitepaper/pascal-architecture-whitepaper.pdf
+  GeForce_GTX_1080_Whitepaper_GP104.pdf  (GP104 variant)
+    http://international.download.nvidia.com/geforce-com/international/pdfs/GeForce_GTX_1080_Whitepaper_FINAL.pdf
+
+cuda_programming/
+  CUDA_C_Programming_Guide.pdf            (official CUDA code examples)
+    https://docs.nvidia.com/cuda/pdf/CUDA_C_Programming_Guide.pdf
+  CUDA_C_Best_Practices_Guide.pdf
+    https://docs.nvidia.com/cuda/pdf/CUDA_C_Best_Practices_Guide.pdf
+  CUDA_Compiler_Driver_NVCC.pdf           (sm_60/61/62 gencode flags)
+    https://docs.nvidia.com/cuda/pdf/CUDA_Compiler_Driver_NVCC.pdf
+  CUDA_GPUs_Compute_Capability.html       (Pascal device/CC list)
+    https://developer.nvidia.com/cuda-gpus
+
+ptx_isa/
+  ptx_isa_8.5.pdf                         (covers .target sm_60/61/62)
+    https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf
+
+archive_cuda8/                            (CUDA 8.0 -- Pascal launch toolkit)
+  CUDA8.0_Pascal_Tuning_Guide.pdf
+    https://docs.nvidia.com/cuda/archive/8.0/pdf/Pascal_Tuning_Guide.pdf
+  CUDA8.0_CUDA_C_Programming_Guide.pdf
+    https://docs.nvidia.com/cuda/archive/8.0/pdf/CUDA_C_Programming_Guide.pdf
+  CUDA8.0_CUDA_C_Best_Practices_Guide.pdf
+    https://docs.nvidia.com/cuda/archive/8.0/pdf/CUDA_C_Best_Practices_Guide.pdf
+  CUDA8.0_ptx_isa_5.0.pdf                 (PTX ISA 5.0, Pascal-era)
+    https://docs.nvidia.com/cuda/archive/8.0/pdf/ptx_isa_5.0.pdf
+
+ADDITIONAL PASCAL-RELATED DOCS (Tier 1 expansion)
+--------------------------------------------------
+profiling/
+  CUDA_Profiler_Users_Guide.pdf            (nvprof -- profile/tune Pascal kernels)
+    https://docs.nvidia.com/cuda/pdf/CUDA_Profiler_Users_Guide.pdf
+  CUDA8.0_Profiler_Users_Guide.pdf         (period-accurate Pascal-era profiler)
+    https://docs.nvidia.com/cuda/archive/8.0/pdf/CUDA_Profiler_Users_Guide.pdf
+
+binary_utils/
+  CUDA_Binary_Utilities.pdf                 (cuobjdump/nvdisasm -- inspect Pascal SASS)
+    https://docs.nvidia.com/cuda/pdf/CUDA_Binary_Utilities.pdf
+  CUDA8.0_Binary_Utilities.pdf              (period-accurate)
+    https://docs.nvidia.com/cuda/archive/8.0/pdf/CUDA_Binary_Utilities.pdf
+
+management/
+  NVML_API_Reference_Guide.pdf             (monitor Pascal clocks/power/ECC)
+    https://docs.nvidia.com/deploy/pdf/NVML_API_Reference_Guide.pdf
+  nvidia-smi.html                           (CLI monitoring reference for Pascal)
+    https://docs.nvidia.com/deploy/nvidia-smi/
+
+occupancy/
+  CUDA-Occupancy-Calculator.pdf             (sm_60/61/62 occupancy; XLS deprecated)
+    https://docs.nvidia.com/cuda/archive/11.6.2/pdf/CUDA-Occupancy-Calculator.pdf
+
+system/
+  DGX-1-UserGuide.pdf                       (8x P100 Pascal+NVLink system reference)
+    https://docs.nvidia.com/dgx/archives/pdf/DGX-1-UserGuide.pdf
+
+legacy/
+  CUDA_GPUs_Compute_Capability_legacy.html  (Pascal device list: CC 6.0/6.1/6.2)
+    https://developer.nvidia.com/cuda/gpus/legacy
+
+release_notes/
+  CUDA8.0_Toolkit_Release_Notes.pdf         (Pascal support in the launch toolkit)
+    https://docs.nvidia.com/cuda/archive/8.0/pdf/CUDA_Toolkit_Release_Notes.pdf
+
+NOTES
+-----
+* "Dynamic Parallelism" is no longer a standalone PDF; it is now a chapter
+  of the CUDA C Programming Guide (included above).
+* Whitepapers are the authoritative GP100/GP104 hardware architecture
+  references; the Tuning/Compatibility guides are the software-facing ones.
+* For absolute period accuracy on Pascal, prefer the archive_cuda8/ set,
+  which matches the CUDA 8.0 toolchain that shipped with the generation.
+* The earlier cuda_programming/CUDA_GPUs_Compute_Capability.html is the
+  CURRENT (non-legacy) NVIDIA page and no longer lists Pascal. The legacy/
+  page above is the authoritative Pascal (compute capability 6.x) device list.
+* The CUDA Occupancy Calculator XLS is deprecated by NVIDIA; the PDF in
+  occupancy/ is the supported replacement and covers compute capabilities
+  through 8.6, including Pascal 6.0/6.1/6.2.
+* The DGX-1 User Guide PDF covers both Pascal (P100) and Volta (V100)
+  configurations; the Pascal-relevant sections are the P100 / NVLink material.
