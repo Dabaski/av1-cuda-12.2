@@ -1713,3 +1713,67 @@ TEST_CASE("gpu block predictor honors angle delta in zone 2") {
     bool ok = runBlockPredict(ctx, intra::D135_PRED, -1, above, 4, 0, left, 4, 0, 7, ref);
     CHECK(ok);
 }
+
+TEST_CASE("builder dc falls back to dc top when left is missing") {
+    const unsigned char above[4] = {10, 20, 30, 40};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::DC_PRED, 0, 4, 4, 0, above, 4, 0, nullptr, 0, 0);
+    CHECK(dst[0] == 25);
+}
+
+TEST_CASE("builder dc falls back to dc left when top is missing") {
+    const unsigned char left[4] = {20, 40, 60, 80};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::DC_PRED, 0, 4, 4, 0, nullptr, 0, 0, left, 4, 0);
+    CHECK(dst[0] == 50);
+}
+
+TEST_CASE("builder dc fills 128 when both edges are missing") {
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::DC_PRED, 0, 4, 4, 0, nullptr, 0, 0, nullptr, 0, 0);
+    CHECK(dst[0] == 128);
+}
+
+TEST_CASE("gpu block predictor dc falls back to dc top") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::DC_PRED, 0, 4, 4, 0, above, 4, 0, nullptr, 0, 0);
+
+    bool ok = runBlockPredict(ctx, intra::DC_PRED, 0, above, 4, 0, nullptr, 0, 0, 0, ref);
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor dc falls back to dc left with top missing") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char left[4] = {20, 40, 60, 80};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::DC_PRED, 0, 4, 4, 0, nullptr, 0, 0, left, 4, 0);
+
+    bool ok = runBlockPredict(ctx, intra::DC_PRED, 0, nullptr, 0, 0, left, 4, 0, 0, ref);
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor dc fills 128 with no edges") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::DC_PRED, 0, 4, 4, 0, nullptr, 0, 0, nullptr, 0, 0);
+
+    bool ok = runBlockPredict(ctx, intra::DC_PRED, 0, nullptr, 0, 0, nullptr, 0, 0, 0, ref);
+    CHECK(ok);
+}

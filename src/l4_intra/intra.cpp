@@ -546,17 +546,31 @@ void buildIntraPredictors(std::uint8_t* dst, int dstStride, int mode, int angleD
 
     if (mode == DC_PRED) {
         int sum = 0;
-        const int count = txwpx + txhpx;
-        for (int j = 0; j < txwpx; j++) {
-            sum += aboveRow[j];
+        if (nLeftPx > 0 && nTopPx > 0) {
+            const int count = txwpx + txhpx;
+            for (int j = 0; j < txwpx; j++) {
+                sum += aboveRow[j];
+            }
+            for (int j = 0; j < txhpx; j++) {
+                sum += leftCol[j];
+            }
+            sum = (sum + (count >> 1)) / count;
+        } else if (nLeftPx > 0) {
+            for (int j = 0; j < txhpx; j++) {
+                sum += leftCol[j];
+            }
+            sum = (sum + (txhpx >> 1)) / txhpx;
+        } else if (nTopPx > 0) {
+            for (int j = 0; j < txwpx; j++) {
+                sum += aboveRow[j];
+            }
+            sum = (sum + (txwpx >> 1)) / txwpx;
+        } else {
+            sum = 128;
         }
-        for (int j = 0; j < txhpx; j++) {
-            sum += leftCol[j];
-        }
-        const int expectedDc = (sum + (count >> 1)) / count;
         for (int r = 0; r < txhpx; r++) {
             for (int c = 0; c < txwpx; c++) {
-                dst[r * dstStride + c] = (std::uint8_t)expectedDc;
+                dst[r * dstStride + c] = (std::uint8_t)sum;
             }
         }
     } else if (mode == V_PRED) {
@@ -1075,30 +1089,44 @@ extern "C" __global__ void predict_block_4x4(
         int i;
         if (needLeft) {
             const int numLeft = 4 + (needBottom ? 4 : 0);
-            for (i = 0; i < *nLeftPx; ++i) {
-                leftCol[i] = leftRef[i];
-            }
-            if (needBottom && *nBottomLeftPx > 0) {
-                for (; i < 4 + *nBottomLeftPx; ++i) {
+            if (*nLeftPx > 0) {
+                for (i = 0; i < *nLeftPx; ++i) {
                     leftCol[i] = leftRef[i];
                 }
-            }
-            for (; i < numLeft; ++i) {
-                leftCol[i] = leftCol[i - 1];
+                if (needBottom && *nBottomLeftPx > 0) {
+                    for (; i < 4 + *nBottomLeftPx; ++i) {
+                        leftCol[i] = leftRef[i];
+                    }
+                }
+                for (; i < numLeft; ++i) {
+                    leftCol[i] = leftCol[i - 1];
+                }
+            } else {
+                const unsigned char v = (*nTopPx > 0) ? aboveRef[0] : 129;
+                for (i = 0; i < numLeft; ++i) {
+                    leftCol[i] = v;
+                }
             }
         }
         if (needAbove) {
             const int numTop = 4 + (needRight ? 4 : 0);
-            for (i = 0; i < *nTopPx; ++i) {
-                aboveRow[i] = aboveRef[i];
-            }
-            if (needRight && *nTopRightPx > 0) {
-                for (i = 4; i < 4 + *nTopRightPx; ++i) {
+            if (*nTopPx > 0) {
+                for (i = 0; i < *nTopPx; ++i) {
                     aboveRow[i] = aboveRef[i];
                 }
-            }
-            for (; i < numTop; ++i) {
-                aboveRow[i] = aboveRow[i - 1];
+                if (needRight && *nTopRightPx > 0) {
+                    for (i = 4; i < 4 + *nTopRightPx; ++i) {
+                        aboveRow[i] = aboveRef[i];
+                    }
+                }
+                for (; i < numTop; ++i) {
+                    aboveRow[i] = aboveRow[i - 1];
+                }
+            } else {
+                const unsigned char v = (*nLeftPx > 0) ? leftRef[0] : 127;
+                for (i = 0; i < numTop; ++i) {
+                    aboveRow[i] = v;
+                }
             }
         }
         if (needAboveLeft) {
@@ -1133,14 +1161,28 @@ extern "C" __global__ void predict_block_4x4(
         }
         if (m == 0) {
             int sum = 0;
-            for (i = 0; i < 4; ++i) {
-                sum += aboveRow[i];
+            if (*nLeftPx > 0 && *nTopPx > 0) {
+                int count = 8;
+                for (i = 0; i < 4; ++i) {
+                    sum += aboveRow[i];
+                }
+                for (i = 0; i < 4; ++i) {
+                    sum += leftCol[i];
+                }
+                kDc = (sum + (count >> 1)) / count;
+            } else if (*nLeftPx > 0) {
+                for (i = 0; i < 4; ++i) {
+                    sum += leftCol[i];
+                }
+                kDc = (sum + (4 >> 1)) / 4;
+            } else if (*nTopPx > 0) {
+                for (i = 0; i < 4; ++i) {
+                    sum += aboveRow[i];
+                }
+                kDc = (sum + (4 >> 1)) / 4;
+            } else {
+                kDc = 128;
             }
-            for (i = 0; i < 4; ++i) {
-                sum += leftCol[i];
-            }
-            int count = 8;
-            kDc = (sum + (count >> 1)) / count;
         }
     }
     __syncthreads();
