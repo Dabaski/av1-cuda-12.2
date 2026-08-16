@@ -17,6 +17,13 @@ void fdct4(const std::int32_t input[4], std::int32_t output[4]);
 
 void fadst4(const std::int32_t input[4], std::int32_t output[4]);
 
+enum class TxType {
+    DCT_DCT,
+    ADST_ADST,
+};
+
+void fwdTxfm2d4x4(const std::int16_t* input, std::int32_t* output, std::uint32_t stride, TxType type);
+
 void dct2Forward4x4(const float in[16], float out[16]);
 
 void adst4Forward4x4(const float in[16], float out[16]);

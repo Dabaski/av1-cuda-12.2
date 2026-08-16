@@ -112,6 +112,43 @@ void fadst4(const std::int32_t input[4], std::int32_t output[4]) {
     output[3] = roundShift(s3, bit);
 }
 
+namespace {
+
+using TxfmFn = void (*)(const std::int32_t*, std::int32_t*);
+
+TxfmFn fwd1d4(TxType type) {
+    return type == TxType::DCT_DCT ? fdct4 : fadst4;
+}
+
+}  // namespace
+
+// svt_av1_transform_two_d_4x4_c / av1_tranform_two_d_core_c, TX_4X4 config:
+// shift {2, 0, 0}, cos_bit 13/13, no flips (DCT_DCT / ADST_ADST both ud/lr=0)
+void fwdTxfm2d4x4(const std::int16_t* input, std::int32_t* output, std::uint32_t stride, TxType type) {
+    TxfmFn txfm = fwd1d4(type);
+    std::int32_t buf[4 * 4];
+    std::int32_t tempIn[4];
+    std::int32_t tempOut[4];
+
+    for (std::uint32_t c = 0; c < 4; ++c) {
+        for (std::uint32_t r = 0; r < 4; ++r) {
+            tempIn[r] = input[r * stride + c];
+        }
+        // round_shift_array(..., -shift[0]) with shift[0] = 2 -> x4
+        for (std::uint32_t i = 0; i < 4; ++i) {
+            tempIn[i] *= (1 << 2);
+        }
+        txfm(tempIn, tempOut);
+        for (std::uint32_t r = 0; r < 4; ++r) {
+            buf[r * 4 + c] = tempOut[r];
+        }
+    }
+
+    for (std::uint32_t r = 0; r < 4; ++r) {
+        txfm(buf + r * 4, output + r * 4);
+    }
+}
+
 constexpr int kN = 4;
 
 namespace {

@@ -97,6 +97,59 @@ TEST_CASE("fadst4 all-zero input early-outs to zeros") {
     CHECK(got[2] == 0);
 }
 
+TEST_CASE("fwdTxfm2d4x4 dct golden dc is 168") {
+    // golden: svt_av1_transform_two_d_4x4_c (DCT_DCT, TX_4X4), input
+    // {9,2,3,1,5,6,7,8,8,7,6,5,4,3,9,1}
+    const std::int16_t in[16] = {9, 2, 3, 1, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 9, 1};
+    std::int32_t out[16] = {0};
+    transforms::fwdTxfm2d4x4(in, out, 4, transforms::TxType::DCT_DCT);
+    CHECK(out[0] == 168);
+}
+
+TEST_CASE("fwdTxfm2d4x4 dct golden full block") {
+    // golden: svt_av1_transform_two_d_4x4_c (DCT_DCT, TX_4X4), input
+    // {9,2,3,1,5,6,7,8,8,7,6,5,4,3,9,1}
+    const std::int16_t in[16] = {9, 2, 3, 1, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 9, 1};
+    const std::int32_t golden[16] = {168, 22,  -4, 31,  -5, 14, 32, -11,
+                                     -40, 21,  -4, 30,  -2, 33, 13, -2};
+    std::int32_t out[16] = {0};
+    transforms::fwdTxfm2d4x4(in, out, 4, transforms::TxType::DCT_DCT);
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (out[i] != golden[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("fwdTxfm2d4x4 dct of a constant-one block has dc 31") {
+    // golden: svt_av1_transform_two_d_4x4_c (DCT_DCT), input all 1s -> dc 31
+    // (verified against SVT's own C; the AV1 Q3 x8 orthonormal figure (32) does
+    // not match the reference pipeline's rounding, so the golden value wins)
+    const std::int16_t in[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    std::int32_t out[16] = {0};
+    transforms::fwdTxfm2d4x4(in, out, 4, transforms::TxType::DCT_DCT);
+    CHECK(out[0] == 31);
+}
+
+TEST_CASE("fwdTxfm2d4x4 adst golden full block") {
+    // golden: svt_av1_transform_two_d_4x4_c (ADST_ADST, TX_4X4), input
+    // {9,2,3,1,5,6,7,8,8,7,6,5,4,3,9,1}
+    const std::int16_t in[16] = {9, 2, 3, 1, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 9, 1};
+    const std::int32_t golden[16] = {150, 61, 8,  39,  47, 19, 39, -1,
+                                     -22, 13, -1, 32,  -11, 31, 23, 8};
+    std::int32_t out[16] = {0};
+    transforms::fwdTxfm2d4x4(in, out, 4, transforms::TxType::ADST_ADST);
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (out[i] != golden[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
 TEST_CASE("forward 4x4 dct of a constant block is all dc") {
     const float in[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
     float out[16] = {0};
