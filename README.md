@@ -1,6 +1,8 @@
 # AV1 CUDA 12.2 Port
 
-GPU-accelerated port of SVT-AV1 transform/quantization paths to CUDA 12.2.
+GPU-accelerated port of [SVT-AV1](https://gitlab.com/AOMediaCodec/SVT-AV1)
+transform/quantization paths to CUDA 12.2. This project is based on
+SVT-AV1's reference implementations, adapted to run on NVIDIA GPUs.
 
 > **Disclaimer:** This project is actively being worked on. Code is incomplete,
 > tests may be red, and APIs will change. Expect rough edges. Not ready for
