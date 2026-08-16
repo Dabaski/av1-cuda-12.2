@@ -1,0 +1,1715 @@
+#include <doctest.h>
+#include <cmath>
+#include <gpurt.h>
+#include <intra.h>
+
+namespace {
+
+bool runBlockPredict(gpurt::GpuContext& ctx, int mode, int angleDelta, const unsigned char* above, int nTopPx,
+                     int nTopRightPx, const unsigned char* left, int nLeftPx, int nBottomLeftPx, int aboveLeft,
+                     const unsigned char* expected) {
+    (void)ctx;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    if (it == names.end()) {
+        return false;
+    }
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(nTopPx > 0 ? sizeof(unsigned char) * (nTopPx + nTopRightPx) : 1);
+    gpurt::DeviceBuffer dLeft(nLeftPx > 0 ? sizeof(unsigned char) * (nLeftPx + nBottomLeftPx) : 1);
+    gpurt::DeviceBuffer dOut(16 * sizeof(unsigned char));
+    if (nTopPx > 0) {
+        dAbove.uploadFrom(above, sizeof(unsigned char) * (nTopPx + nTopRightPx));
+    }
+    if (nLeftPx > 0) {
+        dLeft.uploadFrom(left, sizeof(unsigned char) * (nLeftPx + nBottomLeftPx));
+    }
+
+    int modeArg = mode;
+    int deltaArg = angleDelta;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != expected[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
+TEST_CASE("edge filter strength is 1 for 4x4 with delta 56") {
+    CHECK(intra::edgeFilterStrength(4, 4, 56, 0) == 1);
+}
+
+TEST_CASE("intra edge upsample enabled for 4x4 with delta 23") {
+    CHECK(intra::useIntraEdgeUpsample(4, 4, 23, 0) == 1);
+}
+
+TEST_CASE("edge filter strength 1 filters the last edge sample") {
+    unsigned char p[5] = {10, 20, 30, 40, 50};
+    intra::filterIntraEdge(p, 5, 1);
+    CHECK(p[4] == 48);
+}
+
+TEST_CASE("intra edge upsample interpolates the first half sample") {
+    unsigned char buf[16] = {7, 10, 20, 30, 40, 50, 60, 70, 80};
+    unsigned char* p = buf + 1;
+    intra::upsampleIntraEdge(p, 8);
+    CHECK(p[1] == 15);
+}
+
+TEST_CASE("dr z1 predicts the first pixel from the above row") {
+    const unsigned char above[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    unsigned char dst[16] = {0};
+    intra::drZ1(dst, 4, 4, 4, above, nullptr, 0, 27, 1);
+    CHECK(dst[0] == 14);
+}
+
+TEST_CASE("dr z2 steals the first left sample for d135") {
+    unsigned char a[9] = {90, 100, 101, 102, 103, 104, 105, 106, 107};
+    unsigned char l[9] = {90, 10, 11, 12, 13, 14, 15, 16, 17};
+    unsigned char dst[16] = {0};
+    intra::drZ2(dst, 4, 4, 4, a + 1, l + 1, 0, 0, 64, 64);
+    CHECK(dst[1 * 4 + 0] == 10);
+}
+
+TEST_CASE("dr z3 predicts the first pixel from the left column") {
+    const unsigned char left[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    unsigned char dst[16] = {0};
+    intra::drZ3(dst, 4, 4, 4, nullptr, left, 0, 1, 27);
+    CHECK(dst[0] == 14);
+}
+
+TEST_CASE("angle 45 maps to step 64 in x") {
+    CHECK(intra::getDx(45) == 64);
+}
+
+TEST_CASE("angle 157 maps to step 27 in y") {
+    CHECK(intra::getDy(157) == 27);
+}
+
+TEST_CASE("dr predictor dispatches angle 45 to zone 1") {
+    const unsigned char above[8] = {3, 1, 4, 1, 5, 9, 2, 6};
+    unsigned char dst[16] = {0};
+    intra::drPredictor(dst, 4, 4, 4, above, nullptr, 0, 0, 45);
+    CHECK(dst[1 * 4 + 2] == 5);
+}
+
+TEST_CASE("smooth prediction weights all four edges") {
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char dst[16] = {0};
+    intra::smoothPredict(dst, 4, 4, 4, above, left);
+    CHECK(dst[0] == 8);
+}
+
+TEST_CASE("smooth v weights the vertical trend") {
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char dst[16] = {0};
+    intra::smoothVPredict(dst, 4, 4, 4, above, left);
+    CHECK(dst[0] == 10);
+}
+
+TEST_CASE("smooth h weights the horizontal trend") {
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char dst[16] = {0};
+    intra::smoothHPredict(dst, 4, 4, 4, above, left);
+    CHECK(dst[0] == 5);
+}
+
+TEST_CASE("dr predictor treats angle 90 as vertical") {
+    const unsigned char above[4] = {3, 7, 11, 15};
+    unsigned char dst[16] = {0};
+    intra::drPredictor(dst, 4, 4, 4, above, nullptr, 0, 0, 90);
+    CHECK(dst[2 * 4 + 1] == 7);
+}
+
+TEST_CASE("dr predictor treats angle 180 as horizontal") {
+    const unsigned char left[4] = {5, 6, 7, 8};
+    unsigned char dst[16] = {0};
+    intra::drPredictor(dst, 4, 4, 4, nullptr, left, 0, 0, 180);
+    CHECK(dst[2 * 4 + 3] == 7);
+}
+
+TEST_CASE("builder predicts dc from both edges") {
+    const unsigned char above[4] = {10, 10, 10, 10};
+    const unsigned char left[4] = {20, 20, 20, 20};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::DC_PRED, 0, 4, 4, 0, above, 4, 0, left, 4, 0);
+    CHECK(dst[0] == 15);
+}
+
+TEST_CASE("builder predicts vertical from the above row") {
+    const unsigned char above[4] = {3, 7, 11, 15};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::V_PRED, 0, 4, 4, 0, above, 4, 0, nullptr, 0, 0);
+    CHECK(dst[2 * 4 + 1] == 7);
+}
+
+TEST_CASE("builder predicts horizontal from the left column") {
+    const unsigned char left[4] = {5, 6, 7, 8};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::H_PRED, 0, 4, 4, 0, nullptr, 0, 0, left, 4, 0);
+    CHECK(dst[2 * 4 + 3] == 7);
+}
+
+TEST_CASE("builder predicts paeth from the closest gradient neighbor") {
+    const unsigned char above[4] = {10, 40, 30, 20};
+    const unsigned char left[4] = {50, 60, 70, 80};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::PAETH_PRED, 0, 4, 4, 45, above, 4, 0, left, 4, 0);
+    CHECK(dst[2 * 4 + 1] == 70);
+}
+
+TEST_CASE("builder predicts smooth from all four edges") {
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::SMOOTH_PRED, 0, 4, 4, 0, above, 4, 0, left, 4, 0);
+    CHECK(dst[0] == 8);
+}
+
+TEST_CASE("builder predicts d45 through the dr pipeline") {
+    const unsigned char above[8] = {3, 1, 4, 1, 5, 9, 2, 6};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::D45_PRED, 0, 4, 4, 0, above, 4, 4, nullptr, 0, 0);
+    CHECK(dst[1 * 4 + 2] == 5);
+}
+
+TEST_CASE("builder suspects upsample for d67 before predicting") {
+    const unsigned char above[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    const unsigned char left[4] = {9, 9, 9, 9};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::D67_PRED, 0, 4, 4, 7, above, 4, 4, left, 4, 0);
+    CHECK(dst[0] == 14);
+}
+
+TEST_CASE("builder predicts d135 through zone 2") {
+    const unsigned char above[8] = {100, 101, 102, 103, 104, 105, 106, 107};
+    const unsigned char left[8] = {10, 11, 12, 13, 14, 15, 16, 17};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::D135_PRED, 0, 4, 4, 90, above, 4, 4, left, 4, 4);
+    CHECK(dst[1 * 4 + 0] == 10);
+}
+
+TEST_CASE("builder suspects upsample for d203 too") {
+    const unsigned char above[4] = {9, 9, 9, 9};
+    const unsigned char left[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::D203_PRED, 0, 4, 4, 7, above, 4, 0, left, 4, 4);
+    CHECK(dst[0] == 14);
+}
+
+TEST_CASE("builder upsamples above then predicts d113 through zone 2") {
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::D113_PRED, 0, 4, 4, 7, above, 4, 0, left, 4, 0);
+    CHECK(dst[3] == 37);
+}
+
+TEST_CASE("builder upsamples left then predicts d157 through zone 2") {
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char dst[16] = {0};
+    intra::buildIntraPredictors(dst, 4, intra::D157_PRED, 0, 4, 4, 7, above, 4, 0, left, 4, 0);
+    CHECK(dst[1] == 6);
+}
+
+TEST_CASE("gpu dr z1 matches host reference") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    const int dx = 27;
+    const int upsampleAbove = 0;
+    unsigned char ref[16] = {0};
+    intra::drZ1(ref, 4, 4, 4, above, nullptr, upsampleAbove, dx, 1);
+
+    const std::string ptx = *gpurt::compileToPtx(intra::drZ1CuSource(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+
+    int dxArg = dx;
+    int upArg = upsampleAbove;
+    gpurt::DeviceBuffer dDx(sizeof(dxArg));
+    gpurt::DeviceBuffer dUp(sizeof(upArg));
+    dDx.uploadFrom(&dxArg, sizeof(dxArg));
+    dUp.uploadFrom(&upArg, sizeof(upArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pDx = dDx.get();
+    CUdeviceptr pUp = dUp.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pDx, &pUp, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu dr z1 matches host reference with upsampled edge") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    unsigned char raw[18] = {0};
+    unsigned char* p = raw + 1;
+    p[-1] = 7;
+    for (int i = 0; i < 8; ++i) {
+        p[i] = (unsigned char)(10 * (i + 1));
+    }
+    intra::upsampleIntraEdge(p, 8);
+    const unsigned char* above = raw;
+
+    const int dx = 27;
+    const int upsampleAbove = 1;
+    unsigned char ref[16] = {0};
+    intra::drZ1(ref, 4, 4, 4, above, nullptr, upsampleAbove, dx, 1);
+
+    const std::string ptx = *gpurt::compileToPtx(intra::drZ1CuSource(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dAbove(sizeof(raw));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(raw, sizeof(raw));
+
+    int dxArg = dx;
+    int upArg = upsampleAbove;
+    gpurt::DeviceBuffer dDx(sizeof(dxArg));
+    gpurt::DeviceBuffer dUp(sizeof(upArg));
+    dDx.uploadFrom(&dxArg, sizeof(dxArg));
+    dUp.uploadFrom(&upArg, sizeof(upArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pDx = dDx.get();
+    CUdeviceptr pUp = dUp.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pDx, &pUp, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu dr z3 matches host reference") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char left[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    const int dy = 27;
+    const int upsampleLeft = 0;
+    unsigned char ref[16] = {0};
+    intra::drZ3(ref, 4, 4, 4, nullptr, left, upsampleLeft, 1, dy);
+
+    const std::string ptx = *gpurt::compileToPtx(intra::drZ3CuSource(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int dyArg = dy;
+    int upArg = upsampleLeft;
+    gpurt::DeviceBuffer dDy(sizeof(dyArg));
+    gpurt::DeviceBuffer dUp(sizeof(upArg));
+    dDy.uploadFrom(&dyArg, sizeof(dyArg));
+    dUp.uploadFrom(&upArg, sizeof(upArg));
+
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pDy = dDy.get();
+    CUdeviceptr pUp = dUp.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pLeft, &pDy, &pUp, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu dr z2 matches host reference") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    unsigned char a[9] = {90, 100, 101, 102, 103, 104, 105, 106, 107};
+    unsigned char l[9] = {90, 10, 11, 12, 13, 14, 15, 16, 17};
+    unsigned char ref[16] = {0};
+    intra::drZ2(ref, 4, 4, 4, a + 1, l + 1, 0, 0, 64, 64);
+
+    const int dx = 64;
+    const int dy = 64;
+    const int upsampleAbove = 0;
+    const int upsampleLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::drZ2CuSource(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dAbove(sizeof(a));
+    gpurt::DeviceBuffer dLeft(sizeof(l));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(a, sizeof(a));
+    dLeft.uploadFrom(l, sizeof(l));
+
+    int dxArg = dx;
+    int dyArg = dy;
+    int upAArg = upsampleAbove;
+    int upLArg = upsampleLeft;
+    gpurt::DeviceBuffer dDx(sizeof(dxArg));
+    gpurt::DeviceBuffer dDy(sizeof(dyArg));
+    gpurt::DeviceBuffer dUpA(sizeof(upAArg));
+    gpurt::DeviceBuffer dUpL(sizeof(upLArg));
+    dDx.uploadFrom(&dxArg, sizeof(dxArg));
+    dDy.uploadFrom(&dyArg, sizeof(dyArg));
+    dUpA.uploadFrom(&upAArg, sizeof(upAArg));
+    dUpL.uploadFrom(&upLArg, sizeof(upLArg));
+
+    CUdeviceptr pAbove = dAbove.get() + 1;
+    CUdeviceptr pLeft = dLeft.get() + 1;
+    CUdeviceptr pDx = dDx.get();
+    CUdeviceptr pDy = dDy.get();
+    CUdeviceptr pUpA = dUpA.get();
+    CUdeviceptr pUpL = dUpL.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pLeft, &pDx, &pDy, &pUpA, &pUpL, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu dr z2 matches host reference with upsampled above") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    unsigned char aboveRaw[16];
+    unsigned char leftRaw[16];
+    for (int i = 0; i < 16; ++i) {
+        aboveRaw[i] = 200;
+        leftRaw[i] = 200;
+    }
+    unsigned char* ap = aboveRaw + 8;
+    unsigned char* lp = leftRaw + 8;
+    ap[-1] = 7;
+    ap[0] = 10;
+    ap[1] = 20;
+    ap[2] = 30;
+    ap[3] = 40;
+    lp[-1] = 7;
+    lp[0] = 5;
+    lp[1] = 15;
+    lp[2] = 25;
+    lp[3] = 35;
+    intra::upsampleIntraEdge(ap, 4);
+
+    unsigned char ref[16] = {0};
+    intra::drZ2(ref, 4, 4, 4, ap, lp, 1, 0, 27, 151);
+
+    const int dx = 27;
+    const int dy = 151;
+    const int upsampleAbove = 1;
+    const int upsampleLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::drZ2CuSource(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dAbove(sizeof(aboveRaw));
+    gpurt::DeviceBuffer dLeft(sizeof(leftRaw));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(aboveRaw, sizeof(aboveRaw));
+    dLeft.uploadFrom(leftRaw, sizeof(leftRaw));
+
+    int dxArg = dx;
+    int dyArg = dy;
+    int upAArg = upsampleAbove;
+    int upLArg = upsampleLeft;
+    gpurt::DeviceBuffer dDx(sizeof(dxArg));
+    gpurt::DeviceBuffer dDy(sizeof(dyArg));
+    gpurt::DeviceBuffer dUpA(sizeof(upAArg));
+    gpurt::DeviceBuffer dUpL(sizeof(upLArg));
+    dDx.uploadFrom(&dxArg, sizeof(dxArg));
+    dDy.uploadFrom(&dyArg, sizeof(dyArg));
+    dUpA.uploadFrom(&upAArg, sizeof(upAArg));
+    dUpL.uploadFrom(&upLArg, sizeof(upLArg));
+
+    CUdeviceptr pAbove = dAbove.get() + 8;
+    CUdeviceptr pLeft = dLeft.get() + 8;
+    CUdeviceptr pDx = dDx.get();
+    CUdeviceptr pDy = dDy.get();
+    CUdeviceptr pUpA = dUpA.get();
+    CUdeviceptr pUpL = dUpL.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pLeft, &pDx, &pDy, &pUpA, &pUpL, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu dr dispatch matches host predictor for angle 45") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    unsigned char above[16] = {0};
+    for (int i = 0; i < 16; ++i) {
+        above[i] = 200;
+    }
+    unsigned char* ap = above + 4;
+    ap[0] = 3;
+    ap[1] = 1;
+    ap[2] = 4;
+    ap[3] = 1;
+    ap[4] = 5;
+    ap[5] = 9;
+    ap[6] = 2;
+    ap[7] = 6;
+    unsigned char left[16] = {0};
+    for (int i = 0; i < 16; ++i) {
+        left[i] = 200;
+    }
+    unsigned char* lp = left + 4;
+    lp[-1] = 0;
+    lp[0] = 5;
+
+    unsigned char ref[16] = {0};
+    const int angle = 45;
+    intra::drPredictor(ref, 4, 4, 4, ap, lp, 0, 0, angle);
+
+    const int dx = 64;
+    const int dy = 1;
+    const int upsampleAbove = 0;
+    const int upsampleLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::drPredictCuSource(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int dxArg = dx;
+    int dyArg = dy;
+    int upAArg = upsampleAbove;
+    int upLArg = upsampleLeft;
+    int angleArg = angle;
+    gpurt::DeviceBuffer dDx(sizeof(dxArg));
+    gpurt::DeviceBuffer dDy(sizeof(dyArg));
+    gpurt::DeviceBuffer dUpA(sizeof(upAArg));
+    gpurt::DeviceBuffer dUpL(sizeof(upLArg));
+    gpurt::DeviceBuffer dAngle(sizeof(angleArg));
+    dDx.uploadFrom(&dxArg, sizeof(dxArg));
+    dDy.uploadFrom(&dyArg, sizeof(dyArg));
+    dUpA.uploadFrom(&upAArg, sizeof(upAArg));
+    dUpL.uploadFrom(&upLArg, sizeof(upLArg));
+    dAngle.uploadFrom(&angleArg, sizeof(angleArg));
+
+    CUdeviceptr pAbove = dAbove.get() + 4;
+    CUdeviceptr pLeft = dLeft.get() + 4;
+    CUdeviceptr pDx = dDx.get();
+    CUdeviceptr pDy = dDy.get();
+    CUdeviceptr pUpA = dUpA.get();
+    CUdeviceptr pUpL = dUpL.get();
+    CUdeviceptr pAngle = dAngle.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pLeft, &pDx, &pDy, &pUpA, &pUpL, &pAngle, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu dr dispatch matches host predictor for angle 135") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    unsigned char above[16];
+    unsigned char left[16];
+    for (int i = 0; i < 16; ++i) {
+        above[i] = 200;
+        left[i] = 200;
+    }
+    unsigned char* ap = above + 4;
+    unsigned char* lp = left + 4;
+    ap[-1] = 90;
+    for (int i = 0; i < 8; ++i) {
+        ap[i] = (unsigned char)(100 + i);
+    }
+    lp[-1] = 90;
+    for (int i = 0; i < 8; ++i) {
+        lp[i] = (unsigned char)(10 + i);
+    }
+
+    unsigned char ref[16] = {0};
+    const int angle = 135;
+    intra::drPredictor(ref, 4, 4, 4, ap, lp, 0, 0, angle);
+
+    const int dx = 64;
+    const int dy = 64;
+    const int upsampleAbove = 0;
+    const int upsampleLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::drPredictCuSource(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int dxArg = dx;
+    int dyArg = dy;
+    int upAArg = upsampleAbove;
+    int upLArg = upsampleLeft;
+    int angleArg = angle;
+    gpurt::DeviceBuffer dDx(sizeof(dxArg));
+    gpurt::DeviceBuffer dDy(sizeof(dyArg));
+    gpurt::DeviceBuffer dUpA(sizeof(upAArg));
+    gpurt::DeviceBuffer dUpL(sizeof(upLArg));
+    gpurt::DeviceBuffer dAngle(sizeof(angleArg));
+    dDx.uploadFrom(&dxArg, sizeof(dxArg));
+    dDy.uploadFrom(&dyArg, sizeof(dyArg));
+    dUpA.uploadFrom(&upAArg, sizeof(upAArg));
+    dUpL.uploadFrom(&upLArg, sizeof(upLArg));
+    dAngle.uploadFrom(&angleArg, sizeof(angleArg));
+
+    CUdeviceptr pAbove = dAbove.get() + 4;
+    CUdeviceptr pLeft = dLeft.get() + 4;
+    CUdeviceptr pDx = dDx.get();
+    CUdeviceptr pDy = dDy.get();
+    CUdeviceptr pUpA = dUpA.get();
+    CUdeviceptr pUpL = dUpL.get();
+    CUdeviceptr pAngle = dAngle.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pLeft, &pDx, &pDy, &pUpA, &pUpL, &pAngle, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu smooth matches reference weights") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char ref[16] = {0};
+    intra::smoothPredict(ref, 4, 4, 4, above, left);
+
+    const std::string ptx = *gpurt::compileToPtx(intra::smoothPredictCuSourceRef(), "compute_61");
+    const std::string entry = gpurt::ptxEntryNames(ptx).at(0);
+    gpurt::Kernel k(ptx, entry);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pLeft, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu smooth v matches reference weights") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char ref[16] = {0};
+    intra::smoothVPredict(ref, 4, 4, 4, above, left);
+
+    const std::string ptx = *gpurt::compileToPtx(intra::smoothPredictCuSourceRef(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "smooth_v_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pLeft, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu smooth h matches reference weights") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char ref[16] = {0};
+    intra::smoothHPredict(ref, 4, 4, 4, above, left);
+
+    const std::string ptx = *gpurt::compileToPtx(intra::smoothPredictCuSourceRef(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "smooth_h_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pAbove, &pLeft, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor dc matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 10, 10, 10};
+    const unsigned char left[4] = {20, 20, 20, 20};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::DC_PRED, 0, 4, 4, 0, above, 4, 0, left, 4, 0);
+
+    const int mode = intra::DC_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor vertical matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {3, 7, 11, 15};
+    const unsigned char left[4] = {0, 0, 0, 0};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::V_PRED, 0, 4, 4, 0, above, 4, 0, left, 4, 0);
+
+    const int mode = intra::V_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor horizontal matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {0, 0, 0, 0};
+    const unsigned char left[4] = {5, 6, 7, 8};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::H_PRED, 0, 4, 4, 0, above, 4, 0, left, 4, 0);
+
+    const int mode = intra::H_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor paeth matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 40, 30, 20};
+    const unsigned char left[4] = {50, 60, 70, 80};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::PAETH_PRED, 0, 4, 4, 45, above, 4, 0, left, 4, 0);
+
+    const int mode = intra::PAETH_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 45;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor smooth matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::SMOOTH_PRED, 0, 4, 4, 0, above, 4, 0, left, 4, 0);
+
+    const int mode = intra::SMOOTH_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor d45 matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[8] = {3, 1, 4, 1, 5, 9, 2, 6};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D45_PRED, 0, 4, 4, 0, above, 4, 4, nullptr, 0, 0);
+
+    const int mode = intra::D45_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 4;
+    const int nLeftPx = 0;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 0;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(unsigned char));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    unsigned char dummyLeft = 0;
+    dLeft.uploadFrom(&dummyLeft, sizeof(dummyLeft));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor d67 matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    const unsigned char left[4] = {9, 9, 9, 9};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D67_PRED, 0, 4, 4, 7, above, 4, 4, left, 4, 0);
+
+    const int mode = intra::D67_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 4;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 7;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor d203 matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {9, 9, 9, 9};
+    const unsigned char left[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D203_PRED, 0, 4, 4, 7, above, 4, 0, left, 4, 4);
+
+    const int mode = intra::D203_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 4;
+    const int aboveLeft = 7;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor d135 matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[8] = {100, 101, 102, 103, 104, 105, 106, 107};
+    const unsigned char left[8] = {10, 11, 12, 13, 14, 15, 16, 17};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D135_PRED, 0, 4, 4, 90, above, 4, 4, left, 4, 4);
+
+    const int mode = intra::D135_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 4;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 4;
+    const int aboveLeft = 90;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor d113 matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D113_PRED, 0, 4, 4, 7, above, 4, 0, left, 4, 0);
+
+    const int mode = intra::D113_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 7;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor d157 matches builder") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D157_PRED, 0, 4, 4, 7, above, 4, 0, left, 4, 0);
+
+    const int mode = intra::D157_PRED;
+    const int nTopPx = 4;
+    const int nTopRightPx = 0;
+    const int nLeftPx = 4;
+    const int nBottomLeftPx = 0;
+    const int aboveLeft = 7;
+    const std::string ptx = *gpurt::compileToPtx(intra::predictBlockCuSource(), "compute_61");
+    const std::vector<std::string> names = gpurt::ptxEntryNames(ptx);
+    const auto it = std::find(names.begin(), names.end(), "predict_block_4x4");
+    REQUIRE(it != names.end());
+    gpurt::Kernel k(ptx, *it);
+
+    gpurt::DeviceBuffer dAbove(sizeof(above));
+    gpurt::DeviceBuffer dLeft(sizeof(left));
+    gpurt::DeviceBuffer dOut(sizeof(ref));
+    dAbove.uploadFrom(above, sizeof(above));
+    dLeft.uploadFrom(left, sizeof(left));
+
+    int modeArg = mode;
+    int deltaArg = 0;
+    int nTopArg = nTopPx;
+    int nTrArg = nTopRightPx;
+    int nLeftArg = nLeftPx;
+    int nBlArg = nBottomLeftPx;
+    int alArg = aboveLeft;
+    gpurt::DeviceBuffer dMode(sizeof(modeArg));
+    gpurt::DeviceBuffer dDelta(sizeof(deltaArg));
+    gpurt::DeviceBuffer dNTop(sizeof(nTopArg));
+    gpurt::DeviceBuffer dNTr(sizeof(nTrArg));
+    gpurt::DeviceBuffer dNLeft(sizeof(nLeftArg));
+    gpurt::DeviceBuffer dNBl(sizeof(nBlArg));
+    gpurt::DeviceBuffer dAl(sizeof(alArg));
+    dMode.uploadFrom(&modeArg, sizeof(modeArg));
+    dDelta.uploadFrom(&deltaArg, sizeof(deltaArg));
+    dNTop.uploadFrom(&nTopArg, sizeof(nTopArg));
+    dNTr.uploadFrom(&nTrArg, sizeof(nTrArg));
+    dNLeft.uploadFrom(&nLeftArg, sizeof(nLeftArg));
+    dNBl.uploadFrom(&nBlArg, sizeof(nBlArg));
+    dAl.uploadFrom(&alArg, sizeof(alArg));
+
+    CUdeviceptr pAbove = dAbove.get();
+    CUdeviceptr pLeft = dLeft.get();
+    CUdeviceptr pMode = dMode.get();
+    CUdeviceptr pDelta = dDelta.get();
+    CUdeviceptr pNTop = dNTop.get();
+    CUdeviceptr pNTr = dNTr.get();
+    CUdeviceptr pNLeft = dNLeft.get();
+    CUdeviceptr pNBl = dNBl.get();
+    CUdeviceptr pAl = dAl.get();
+    CUdeviceptr pOut = dOut.get();
+    void* args[] = {&pMode, &pDelta, &pAbove, &pNTop, &pNTr, &pLeft, &pNLeft, &pNBl, &pAl, &pOut};
+    k.launch(1, 1, 16, 1, args);
+
+    unsigned char got[16] = {0};
+    dOut.downloadTo(got, sizeof(got));
+
+    bool ok = true;
+    for (int i = 0; i < 16; ++i) {
+        if (got[i] != ref[i]) {
+            ok = false;
+        }
+    }
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor honors angle delta") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[8] = {10, 20, 30, 40, 50, 60, 70, 80};
+    const unsigned char left[4] = {9, 9, 9, 9};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D67_PRED, -1, 4, 4, 7, above, 4, 4, left, 4, 0);
+
+    bool ok = runBlockPredict(ctx, intra::D67_PRED, -1, above, 4, 4, left, 4, 0, 7, ref);
+    CHECK(ok);
+}
+
+TEST_CASE("gpu block predictor honors angle delta in zone 2") {
+    if (gpurt::deviceCount() == 0) {
+        MESSAGE("SKIP: no CUDA device");
+        return;
+    }
+    gpurt::GpuContext ctx;
+
+    const unsigned char above[4] = {10, 20, 30, 40};
+    const unsigned char left[4] = {5, 15, 25, 35};
+    unsigned char ref[16] = {0};
+    intra::buildIntraPredictors(ref, 4, intra::D135_PRED, -1, 4, 4, 7, above, 4, 0, left, 4, 0);
+
+    bool ok = runBlockPredict(ctx, intra::D135_PRED, -1, above, 4, 0, left, 4, 0, 7, ref);
+    CHECK(ok);
+}
