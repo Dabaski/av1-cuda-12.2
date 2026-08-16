@@ -1,6 +1,20 @@
 #include "pipeline.h"
 
+#include <string>
+
 namespace pipeline {
+
+std::string subtractCuSource() {
+    return R"CUDA(
+extern "C" __global__ void subtract_4x4_plane(const unsigned char* src, const int* srcStride, const int* px,
+                                              const int* py, const unsigned char* pred, short* residual) {
+    const int idx = threadIdx.x;
+    const int r = idx >> 2;
+    const int c = idx & 3;
+    residual[idx] = (short)(src[(*py + r) * (*srcStride) + (*px + c)] - pred[idx]);
+}
+)CUDA";
+}
 
 void encodeBlock4x4(const pixels::Plane& plane, int px, int py, const std::uint8_t* aboveRef, int nTopPx,
                     int nTopRightPx, const std::uint8_t* leftRef, int nLeftPx, int nBottomLeftPx,

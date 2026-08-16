@@ -19,4 +19,6 @@ void encodeBlock4x4(const pixels::Plane& plane, int px, int py, const std::uint8
                     std::uint8_t aboveLeft, intra::PredictionMode mode, int angleDelta,
                     transforms::TxType txType, std::int32_t coeffs[16]);
 
+std::string subtractCuSource();
+
 }  // namespace pipeline
