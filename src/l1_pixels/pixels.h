@@ -24,6 +24,10 @@ public:
         return data_[static_cast<std::size_t>((y + padding_) * stride() + (x + padding_))];
     }
 
+    const core::Sample& at(int x, int y) const {
+        return data_[static_cast<std::size_t>((y + padding_) * stride() + (x + padding_))];
+    }
+
 private:
     int width_;
     int height_;

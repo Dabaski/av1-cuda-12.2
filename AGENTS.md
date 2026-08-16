@@ -154,3 +154,14 @@ being close to useless. Do not conflate them.
   such harness exists yet when the first performance-sensitive kernel lands,
   say so explicitly rather than silently skipping perf verification.
  
+
+## Layer map (current)
+
+- l0_core — minimal types (Sample, BlockSize) shared across layers.
+- l1_pixels — pixels::Plane (strided pixel buffer with padding).
+- l2_gpurt — NVRTC JIT + driver-API runtime (GpuContext, DeviceBuffer, Kernel, ptxEntryNames); kernels are CUDA C++ source strings compiled for compute_61.
+- l3_transforms — SVT-AV1 fixed-point forward transforms: fdct4, fadst4, fwdTxfm2d4x4(TxType) (4x4, cos_bit=13) plus a bit-exact GPU twin; cospi/sinpi cos_bit=13 tables and halfBtf/roundShift. Integer only.
+- l4_intra — buildIntraPredictors (1:1 with SVT build_intra_predictors, luma, DC availability variants, missing-neighbor fills), drZ1/2/3 + drPredictor, edge filter/upsample, smoothPredict family; GPU twin predict_block_4x4.
+- l5_motion — motion::sad8x8 (strided uint8, bit-exact with compute8x8_sad_kernel_c) + GPU kernel.
+- l6_pipeline — 4x4 block composition: pipeline::encodeBlock4x4 = plane window (l1) + buildIntraPredictors (l4) -> int16 residual (no clamp) -> fwdTxfm2d4x4 (l3). Goldens captured from SVT's own C in the throwaway harness (%TEMP%\svt_ref\, never committed).
+- third_party/ — vendored SVT-AV1 (1:1 source of truth), doctest, hardware docs (perf-axis only: PTX ISA, GP104 whitepaper, Pascal Tuning Guide, Nsight-focused guides; CUDA 12.2 profiling is ncu, not nvprof).
